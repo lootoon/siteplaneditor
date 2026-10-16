@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TakeOff – Sign in</title>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body class="login-body">
+  <form class="login-card" id="f">
+    <div class="brand big">Take<b>Off</b></div>
+    <p id="msg">Sign in to continue</p>
+    <input type="password" id="pw" placeholder="Password" autofocus required>
+    <input type="password" id="pw2" placeholder="Confirm password" hidden>
+    <button class="btn primary" type="submit" id="go">Sign in</button>
+    <div class="err" id="err"></div>
+  </form>
+<script>
+let setup = false;
+fetch('/api/auth/status').then(r => r.json()).then(s => {
+  if (s.loggedIn) location.href = '/';
+  if (!s.hasPassword) {
+    setup = true;
+    document.getElementById('msg').textContent = 'First time: create a password for this app';
+    document.getElementById('pw2').hidden = false;
+    document.getElementById('go').textContent = 'Create password';
+  }
+});
+document.getElementById('f').onsubmit = async e => {
+  e.preventDefault();
+  const pw = document.getElementById('pw').value, err = document.getElementById('err');
+  if (setup && pw !== document.getElementById('pw2').value) { err.textContent = 'Passwords do not match'; return; }
+  const r = await fetch(setup ? '/api/auth/setup' : '/api/auth/login', {
+    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({password: pw})});
+  if (r.ok) location.href = '/';
+  else err.textContent = (await r.json()).detail || 'Failed';
+};
+</script>
+</body>
+</html>

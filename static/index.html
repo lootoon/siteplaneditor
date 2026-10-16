@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TakeOff</title>
+<link rel="stylesheet" href="/app.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+<body>
+<header id="topbar">
+  <button class="btn ghost icon" id="tglLeft" title="Show / hide left panel ( [ )">◧</button>
+  <div class="brand">Take<b>Off</b></div>
+  <button class="btn ghost" id="btnProjects" title="Projects">☰ <span id="projName">No project</span></button>
+  <div class="menu">
+    <button class="btn ghost">File ▾</button>
+    <div class="menu-list">
+      <button data-cmd="saveFile">💾 Save project file (.takeoff)</button>
+      <button data-cmd="openFile">📂 Open project file…</button>
+      <hr>
+      <button data-cmd="exportXlsx">📊 Export BQ to Excel</button>
+      <button data-cmd="exportPdf">📄 Export marked-up PDF (this drawing)</button>
+      <button data-cmd="exportPng">🖼 Save page as PNG</button>
+      <button data-cmd="print">🖨 Print page</button>
+      <hr>
+      <button data-cmd="changePw">🔑 Change password</button>
+      <button data-cmd="logout">⎋ Log out</button>
+    </div>
+  </div>
+  <div class="sep"></div>
+  <div class="tools" id="tools">
+    <button data-tool="select" title="Select / move (V)">⬚</button>
+    <button data-tool="pan" title="Pan (H or hold Space)">✋</button>
+    <button data-tool="length" title="Length (L)">📏</button>
+    <button data-tool="area" title="Area polygon (A)">⬠</button>
+    <button data-tool="rect" title="Rectangle area (R)">▭</button>
+    <button data-tool="count" title="Count (C)">●</button>
+    <button data-tool="angle" title="Angle (G)">∠</button>
+    <button data-tool="text" title="Text / comment (T)">💬</button>
+    <button data-tool="highlight" title="Highlight / cloud box (K)">🖍</button>
+    <button data-tool="signature" title="Place signature (S)">✍</button>
+  </div>
+  <div class="sep"></div>
+  <div class="scalebox">
+    <button class="btn ghost" data-tool="calibrate" title="Set scale: click both ends of a known dimension">📐</button>
+    <select id="scalePreset" title="Preset scale (drawing printed at its paper size)">
+      <option value="">Preset…</option>
+      <option>1:1</option><option>1:5</option><option>1:10</option><option>1:20</option><option>1:25</option>
+      <option>1:50</option><option>1:75</option><option>1:100</option><option>1:150</option><option>1:200</option>
+      <option>1:250</option><option>1:500</option><option>1:1000</option><option>1:1250</option><option>1:2500</option>
+    </select>
+    <span id="scaleLabel" class="pill warn">Not scaled</span>
+  </div>
+  <div class="grow"></div>
+  <label class="chk" title="Show quantities on the drawing"><input type="checkbox" id="optValues" checked> Values</label>
+  <label class="chk" title="Show legend on this page"><input type="checkbox" id="optLegend"> Legend</label>
+  <label class="chk" title="Overlay previous drawing revision in red"><input type="checkbox" id="optCompare"> Compare rev</label>
+  <span id="saveState" class="pill">—</span>
+  <button class="btn ghost icon" id="tglRight" title="Show / hide right panel ( ] )">◨</button>
+</header>
+
+<main id="main">
+  <aside id="left">
+    <div class="tabs icons">
+      <button data-ltab="drawings" class="on" title="Drawings &amp; pages">📄</button>
+      <button data-ltab="bookmarks" title="Bookmarks">🔖</button>
+      <button data-ltab="comments" title="Comments">💬</button>
+    </div>
+    <section data-lpanel="drawings">
+      <div class="row gap">
+        <span class="subhead grow" style="margin:0">Drawings</span>
+        <button class="btn small icon primary" id="btnAddDrawing" title="Add PDF drawing(s)">＋</button>
+        <input type="file" id="fileDrawing" accept="application/pdf" multiple hidden>
+        <input type="file" id="fileReplace" accept="application/pdf" hidden>
+      </div>
+      <div id="drawingList"></div>
+      <div class="subhead">Pages</div>
+      <div id="pageList"></div>
+    </section>
+    <section data-lpanel="bookmarks" hidden>
+      <div class="row gap">
+        <span class="subhead grow" style="margin:0">My bookmarks</span>
+        <button class="btn small icon primary" id="btnAddBookmark" title="Bookmark this view">＋</button>
+      </div>
+      <div id="bookmarkList"></div>
+      <div class="subhead">PDF outline</div>
+      <div id="outlineList" class="muted small">—</div>
+    </section>
+    <section data-lpanel="comments" hidden>
+      <div class="row gap">
+        <input class="search grow" id="cmtSearch" placeholder="Search comments…">
+        <button class="btn small icon primary" id="cmtAdd" title="Add comment (T)">＋</button>
+      </div>
+      <label class="chk small"><input type="checkbox" id="cmtAll" checked> All drawings</label>
+      <div id="commentList"></div>
+    </section>
+  </aside>
+
+  <div id="center">
+    <div id="revBanner" hidden><span id="revBannerText"></span><button class="btn small" id="revBannerClose">✕ Close – back to current</button></div>
+    <div id="stage" tabindex="0">
+      <div id="pagewrap">
+        <canvas id="cvs"></canvas>
+        <canvas id="cvsOld"></canvas>
+        <svg id="ovl" xmlns="http://www.w3.org/2000/svg"></svg>
+      </div>
+      <div id="empty" class="empty">
+        <h2>Welcome to TakeOff</h2>
+        <p>Open or create a project (☰), then click <b>+ Add PDF</b> to load a drawing.</p>
+      </div>
+    </div>
+    <footer id="status">
+      <button class="btn ghost small" id="pgPrev">◀</button>
+      <span id="pgLabel">–</span>
+      <button class="btn ghost small" id="pgNext">▶</button>
+      <span class="sep"></span>
+      <button class="btn ghost small" id="zOut">−</button>
+      <span id="zLabel">100%</span>
+      <button class="btn ghost small" id="zIn">+</button>
+      <button class="btn ghost small" id="zFit">Fit</button>
+      <span class="sep"></span>
+      <span id="hint" class="muted"></span>
+      <span class="grow"></span>
+      <span id="active" class="muted"></span>
+      <span id="cursor" class="muted"></span>
+    </footer>
+  </div>
+
+  <aside id="right">
+    <div class="tabs">
+      <button data-rtab="bq" class="on">BQ</button><button data-rtab="cats">Categories</button>
+      <button data-rtab="marks">Markups</button><button data-rtab="sigs">Signatures</button>
+    </div>
+    <section data-rpanel="bq">
+      <div id="bqSheets" class="sheets"></div>
+      <div class="row gap wrap iconbar">
+        <button class="btn small primary" id="bqPaste" title="Paste / import BQ from Excel">📋 Import</button>
+        <button class="btn small icon" id="bqGrid" title="Edit this sheet in a grid (like Excel)">▦</button>
+        <input type="file" id="fileXlsx" accept=".xlsx,.xls,.csv" hidden>
+        <span class="vsep"></span>
+        <button class="btn small icon" id="bqAddHdr" title="Add heading (description level)">H＋</button>
+        <button class="btn small icon" id="bqAdd" title="Add item (with unit)">＋</button>
+        <button class="btn small icon" id="bqOut" title="Level up / outdent (Shift+Tab)">⇤</button>
+        <button class="btn small icon" id="bqIn" title="Level down / indent (Tab)">⇥</button>
+        <button class="btn small icon" id="bqUp" title="Move row up">↑</button>
+        <button class="btn small icon" id="bqDown" title="Move row down">↓</button>
+        <button class="btn small icon" id="bqDel" title="Delete selected row">🗑</button>
+        <span class="vsep"></span>
+        <button class="btn small icon" id="bqNone" title="Measure without a BQ item">⊘</button>
+        <input class="search grow" id="bqSearch" placeholder="Filter…" style="min-width:80px">
+      </div>
+      <div class="tablewrap"><table id="bqTable" class="grid bq"></table></div>
+      <div class="bqtotal"><span class="muted small"><span class="qty-legend measured">■ measured</span> <span class="qty-legend manual">■ manual</span></span><span class="grow"></span>
+        Sheet: <b id="bqSheetTotal">0.00</b> &nbsp; All: <b id="bqGrand">0.00</b></div>
+    </section>
+    <section data-rpanel="cats" hidden>
+      <div class="row gap"><button class="btn small primary" id="catAdd">+ Category</button>
+        <button class="btn small" id="catAddSub">+ Sub-category</button>
+        <button class="btn small" id="catNone">No category</button></div>
+      <div id="catList"></div>
+    </section>
+    <section data-rpanel="marks" hidden>
+      <div id="markProps"></div>
+      <div class="row gap"><label class="chk"><input type="checkbox" id="marksAllPages"> All pages</label>
+        <span class="muted small" id="marksCount"></span></div>
+      <div class="tablewrap"><table id="markTable" class="grid"></table></div>
+    </section>
+    <section data-rpanel="sigs" hidden>
+      <div class="row gap"><button class="btn small primary" id="sigNew">✍ Draw new</button>
+        <button class="btn small" id="sigUpload">Upload image</button>
+        <input type="file" id="fileSig" accept="image/png,image/jpeg" hidden></div>
+      <p class="muted small">Click a signature, then click on the drawing to place it. Drag the corner handle to resize.</p>
+      <div id="sigList"></div>
+    </section>
+  </aside>
+</main>
+
+<div id="modal" class="modal" hidden><div class="modal-card" id="modalCard"></div></div>
+<input type="file" id="fileProject" accept=".takeoff,.zip" hidden>
+<div id="toast"></div>
+
+<script type="module" src="/js/app.js"></script>
+</body>
+</html>
