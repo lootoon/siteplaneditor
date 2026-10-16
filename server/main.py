@@ -15,15 +15,9 @@ from . import db
 
 db.init()
 STATIC_DIR = os.path.join(db.BASE_DIR, "static")
-HOSTED = os.environ.get("RENDER", "").lower() == "true"
-HOST_PASSWORD = os.environ.get("TAKEOFF_PASSWORD", "")
-if HOSTED and len(HOST_PASSWORD) < 12:
-    raise RuntimeError("Set TAKEOFF_PASSWORD in Render Environment to at least 12 characters.")
 
 
 def _secret_key():
-    if os.environ.get("TAKEOFF_SESSION_SECRET"):
-        return os.environ["TAKEOFF_SESSION_SECRET"]
     key = db.get_setting("session_secret")
     if not key:
         key = secrets.token_hex(32)
@@ -38,15 +32,9 @@ def _hash(password, salt=None):
 
 
 def _verify(password, stored):
-    if not stored:
-        return False
     salt, _ = stored.split("$", 1)
     return hmac.compare_digest(_hash(password, salt), stored)
 
-
-if HOST_PASSWORD:
-    # Re-established after a free-host filesystem reset; never reopen public setup.
-    db.set_setting("password_hash", _hash(HOST_PASSWORD))
 
 app = FastAPI(title="TakeOff")
 
@@ -56,7 +44,7 @@ OPEN_PATHS = ("/login.html", "/api/auth/", "/app.css", "/favicon")
 @app.middleware("http")
 async def require_login(request: Request, call_next):
     path = request.url.path
-    if path != "/healthz" and not request.session.get("user") and not path.startswith(OPEN_PATHS):
+    if not request.session.get("user") and not path.startswith(OPEN_PATHS):
         if path.startswith("/api/"):
             return JSONResponse({"detail": "Not logged in"}, status_code=401)
         return RedirectResponse("/login.html")
@@ -65,12 +53,7 @@ async def require_login(request: Request, call_next):
 
 # Added after the auth middleware so it wraps it (session is available inside).
 app.add_middleware(SessionMiddleware, secret_key=_secret_key(), max_age=60 * 60 * 24 * 30,
-                   same_site="lax", https_only=HOSTED)
-
-
-@app.get("/healthz")
-def health():
-    return {"ok": True}
+                   same_site="lax")
 
 
 # ---- auth -------------------------------------------------------------------
@@ -82,8 +65,6 @@ def auth_status(request: Request):
 
 @app.post("/api/auth/setup")
 def auth_setup(request: Request, password: str = Body(..., embed=True)):
-    if HOST_PASSWORD:
-        raise HTTPException(403, "Password is managed in hosting settings")
     if db.get_setting("password_hash"):
         raise HTTPException(400, "Password already set")
     if len(password) < 4:
@@ -110,10 +91,6 @@ def auth_logout(request: Request):
 
 @app.post("/api/auth/change")
 def auth_change(old: str = Body(...), new: str = Body(...)):
-    if HOST_PASSWORD:
-        raise HTTPException(403, "Change TAKEOFF_PASSWORD in hosting settings, then restart")
-    if len(new) < 4:
-        raise HTTPException(400, "Password too short")
     if not _verify(old, db.get_setting("password_hash")):
         raise HTTPException(401, "Wrong password")
     db.set_setting("password_hash", _hash(new))

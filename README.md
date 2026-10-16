@@ -1,9 +1,5 @@
 # TakeOff – PDF measurement + BQ
 
-## Host online for iPad testing
-
-See [DEPLOY-RENDER.md](DEPLOY-RENDER.md) for GitHub upload and free Render setup.
-
 ## Start
 Double-click **run.bat**. The browser opens at http://localhost:8000.
 - The first time, it installs the Python packages and asks you to create a password.
