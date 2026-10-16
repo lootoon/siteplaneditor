@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: takeoff-demo
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn server.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /healthz
+    envVars:
+      - key: TAKEOFF_PASSWORD
+        sync: false
+      - key: TAKEOFF_SESSION_SECRET
+        generateValue: true
+      - key: TAKEOFF_DATA
+        value: /tmp/takeoff-data
